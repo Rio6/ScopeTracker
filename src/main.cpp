@@ -58,7 +58,9 @@ void loop() {
 
     if(btn.pressedFor(3000)) {
         // Calibrate magnetometer
+        digitalWrite(LED0, HIGH);
         magCali = calibrateMag();
+        digitalWrite(LED0, LOW);
     }
 
     // MPU6050
