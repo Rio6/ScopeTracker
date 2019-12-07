@@ -1,13 +1,25 @@
 #include <Arduino.h>
 #include <Wire.h>
 
-#include <MadgwickAHRS.h>
+#include <JC_Button.h>
 #include <PrintEx.h>
 #include <vector_math.h>
+
+#include "calibrate.h"
+
+#define LED0 13
+#define LED1 12
+#define BTN 11
+#define JOYX A2
+#define JOYY A3
+#define JOYB 10
 
 using namespace vmath;
 
 StreamEx eSerial = Serial;
+Button btn(BTN);
+Button joyBtn(JOYB);
+MagCalibration magCali;
 
 void setup() {
     Serial.begin(9600);
@@ -16,7 +28,7 @@ void setup() {
     // Setup MPU-6050
     Wire.beginTransmission(0x68);
     Wire.write(0x6B);
-    Wire.write(0);
+    Wire.write(0); // Disable power save
     Wire.endTransmission(true);
 
     // Setup HMC5883
@@ -26,19 +38,29 @@ void setup() {
     Wire.endTransmission();
 
     // Joystick
-    pinMode(A2, INPUT);
-    pinMode(A3, INPUT);
-    pinMode(10, INPUT_PULLUP);
+    pinMode(JOYX, INPUT);
+    pinMode(JOYY, INPUT);
+    joyBtn.begin();
 
-    digitalWrite(3, LOW); // gnd
-    digitalWrite(4, HIGH); // v+
+    // Buttons and leds
+    pinMode(LED0, OUTPUT);
+    pinMode(LED1, OUTPUT);
+    btn.begin();
 
-    pinMode(13, OUTPUT);
-    pinMode(12, OUTPUT);
-    pinMode(11, INPUT_PULLUP);
+    // Load saved magnetometer calibration
+    magCali = loadMagCalibration();
 }
 
 void loop() {
+    // Process input
+    btn.read();
+    joyBtn.read();
+
+    if(btn.pressedFor(3000)) {
+        // Calibrate magnetometer
+        magCali = calibrateMag();
+    }
+
     // MPU6050
     Wire.beginTransmission(0x68);
     Wire.write(0x3B);
@@ -64,11 +86,19 @@ void loop() {
     Wire.requestFrom(0x1E, 6, true);
 
     vec3<double> mag;
-    mag.y = (Wire.read() << 8 | Wire.read()) / 1370.0; // The board is rotated 90 deg
-    mag.z = (Wire.read() << 8 | Wire.read()) / 1370.0;
-    mag.x =-(Wire.read() << 8 | Wire.read()) / 1370.0; // so swap x y, invert x
+    mag.y = (Wire.read() << 8 | Wire.read()); // The board is rotated 90 deg
+    mag.z = (Wire.read() << 8 | Wire.read());
+    mag.x =-(Wire.read() << 8 | Wire.read()); // so swap x y, invert x
+
+    // Apply calibration
+    mag += magCali.offset;
+    mag *= magCali.scale;
 
     double alt = asin(dot(acc, vec3<double> {0, 1, 0}) / length(acc));
+
+    double heading = atan2(mag.y, mag.x);
+
+    eSerial.printf("%2.2f: %2.2f, %2.2f, %2.2f\n", heading, mag.x, mag.y, mag.z);
 
     /*
     static char cmd0 = 0, cmd1 = 0;
