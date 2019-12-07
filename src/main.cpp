@@ -68,9 +68,10 @@ void loop() {
     Wire.requestFrom(0x68, 14, true);
 
     vec3<double> acc;
-    acc.x = (Wire.read() << 8 | Wire.read()) / 16384.0;
-    acc.y = (Wire.read() << 8 | Wire.read()) / 16384.0;
-    acc.z = (Wire.read() << 8 | Wire.read()) / 16384.0;
+    acc.x = Wire.read() << 8 | Wire.read();
+    acc.y = Wire.read() << 8 | Wire.read();
+    acc.z = Wire.read() << 8 | Wire.read();
+    acc = normalize(acc); // Easier calculations
 
     double temp = ((Wire.read() << 8 | Wire.read()) + 521) / 340.0;
 
@@ -92,11 +93,15 @@ void loop() {
 
     // Apply calibration
     mag += magCali.offset;
-    mag *= magCali.scale;
+    mag *= magCali.scale; // Becomes normalized
 
-    double alt = asin(dot(acc, vec3<double> {0, 1, 0}) / length(acc));
+    auto forward = vec3<double> {0, 1, 0};
 
-    double heading = atan2(mag.y, mag.x);
+    double alt = asin(dot(acc, forward)); // angle between acc vector and xz plane
+
+    auto north = mag - dot(mag, acc) * acc; // project to plane prependicular to acc
+    auto head = forward - dot(forward, acc) * acc; // ^
+    double heading = acos(dot(head, normalize(north)) / length(head));
 
     eSerial.printf("%2.2f: %2.2f, %2.2f, %2.2f\n", heading, mag.x, mag.y, mag.z);
 
