@@ -6,6 +6,7 @@
 #include <vector_math.h>
 
 #include "calibrate.h"
+#include "smoother.h"
 
 #define LED0 13
 #define LED1 12
@@ -14,12 +15,18 @@
 #define JOYY A3
 #define JOYB 10
 
+const int NUM_SAMPLES = 10;
+
 using namespace vmath;
 
 StreamEx eSerial = Serial;
+MagCalibration magCali;
+
 Button btn(BTN);
 Button joyBtn(JOYB);
-MagCalibration magCali;
+
+Smoother azi(NUM_SAMPLES);
+Smoother alt(NUM_SAMPLES);
 
 void setup() {
     Serial.begin(9600);
@@ -98,14 +105,13 @@ void loop() {
     mag *= magCali.scale; // Becomes normalized
 
     auto forward = vec3<double> {0, 1, 0};
-
-    double alt = asin(dot(acc, forward)); // angle between acc vector and xz plane
-
     auto north = mag - dot(mag, acc) * acc; // project to plane prependicular to acc
-    auto head = forward - dot(forward, acc) * acc; // ^
-    double heading = acos(dot(head, normalize(north)) / length(head));
+    auto heading = forward - dot(forward, acc) * acc; // ^
 
-    eSerial.printf("%2.2f: %2.2f, %2.2f, %2.2f\n", heading, mag.x, mag.y, mag.z);
+    azi << acos(dot(heading, normalize(north)) / length(heading)); // angle between heading and north
+    alt << asin(dot(acc, forward)); // angle between acc vector and xz plane
+
+    eSerial.printf("azimuth: %2.2f, altitude: %2.2f\n", azi.getValue(), alt.getValue());
 
     /*
     static char cmd0 = 0, cmd1 = 0;
