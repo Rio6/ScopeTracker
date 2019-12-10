@@ -13,10 +13,7 @@ struct Smoother {
         memcpy(vals, other.vals, numSamples * sizeof(double));
     }
 
-    Smoother &operator=(const Smoother &other) {
-        memcpy(vals, other.vals, numSamples * sizeof(double));
-        return *this;
-    }
+    Smoother &operator=(const Smoother&) = delete;
 
     ~Smoother() {
         delete[] vals;

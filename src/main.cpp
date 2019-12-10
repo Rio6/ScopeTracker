@@ -11,8 +11,8 @@
 #define LED0 13
 #define LED1 12
 #define BTN 11
-#define JOYX A2
-#define JOYY A3
+#define JOYX A3
+#define JOYY A2
 #define JOYB 10
 
 const int NUM_SAMPLES = 10;
@@ -27,6 +27,74 @@ Button joyBtn(JOYB);
 
 Smoother azi(NUM_SAMPLES);
 Smoother alt(NUM_SAMPLES);
+double lst = 0, lat = 0; // Can be changed with joy stick
+
+// Altitude and azimuth to right accension and declination. All radians
+void alazToRade(double alt, double azi, double lst, double lat, double &ra, double &dec) {
+    /*
+     * https://www.cloudynights.com/topic/448682-help-w-conversion-of-altaz-to-radec-for-dsc/?p=5811415
+     *
+     * sinD = sinA * sinL + cosA * cosL * cosAZ
+     * cosH = (sinA - sinL * sinD) / (cosL * cosD)
+     *
+     * D=declination
+     * H=hour angle
+     * A=altitude
+     * AZ=azimuth
+     * L=latitude
+     *
+     * also, RA = LST - H
+     */
+
+    dec = asin(sin(alt) * sin(lat) + cos(alt) * cos(lat) * cos(azi));
+    ra = fmod(lst - acos((sin(alt) - sin(lat) * sin(dec)) / (cos(lat) * cos(dec))), 2 * PI);
+    if(ra < 0) ra += 2 * PI;
+}
+
+// Blocks until a :GD# or :GR# command is recieved
+void lx200Comm(double ra, double dec) {
+    char cmd0 = 0, cmd1 = 0;
+
+    digitalWrite(LED0, LOW);
+    digitalWrite(LED1, LOW);
+
+    while(true) {
+        while(!Serial.available());
+        switch(char val = Serial.read()) {
+            case '#':
+                goto endLoop;
+            case ':':
+                cmd0 = cmd1 = 0;
+                break;
+            default:
+                if(!cmd0)
+                    cmd0 = val;
+                else
+                    cmd1 = val;
+                break;
+        }
+    }
+    endLoop:
+
+    switch(cmd1) {
+        case 'R':
+            {
+                long raSec = (long) (ra * 43200 / PI);
+                eSerial.printf("%02ld:%02ld:%02ld#", raSec / 3600, raSec % 3600 / 60, raSec % 60);
+                //Serial.prlong("03:00:00#");
+                digitalWrite(LED0, HIGH);
+                break;
+            }
+        case 'D':
+            {
+                long decSec = (long) abs(dec * 43200 / PI);
+                eSerial.printf("%s%02ld*%02ld#", dec >= 0 ? "+" : "-", decSec / 3600, decSec % 3600 / 60);
+                //Serial.print("+45*00#");
+                digitalWrite(LED1, HIGH);
+                break;
+            }
+    }
+}
 
 void setup() {
     Serial.begin(9600);
@@ -70,6 +138,17 @@ void loop() {
         digitalWrite(LED0, LOW);
     }
 
+    int joyX = analogRead(JOYX);
+    int joyY = analogRead(JOYY);
+    if(joyX < 400)
+        lst -= 0.1;
+    else if(joyX > 624)
+        lst += 0.1;
+    if(joyY < 400)
+        lat -= 0.1;
+    else if(joyY > 624)
+        lat += 0.1;
+
     // MPU6050
     Wire.beginTransmission(0x68);
     Wire.write(0x3B);
@@ -104,52 +183,22 @@ void loop() {
     mag += magCali.offset;
     mag *= magCali.scale; // Becomes normalized
 
+    // Calculate altitude and azimuth
     auto forward = vec3<double> {0, 1, 0};
-    auto north = mag - dot(mag, acc) * acc; // project to plane prependicular to acc
-    auto heading = forward - dot(forward, acc) * acc; // ^
+    auto north = mag - dot(mag, acc) * acc; // mag's projection to plane prependicular to acc
+    auto heading = forward - dot(forward, acc) * acc; // forward's projection to ^
 
     azi << acos(dot(heading, normalize(north)) / length(heading)); // angle between heading and north
     alt << asin(dot(acc, forward)); // angle between acc vector and xz plane
 
-    eSerial.printf("azimuth: %2.2f, altitude: %2.2f\n", azi.getValue(), alt.getValue());
+    // Calculate right accension and declination
+    double ra = 0, dec = 0;
+    alazToRade(alt, azi, lst, lat, ra, dec);
 
-    /*
-    static char cmd0 = 0, cmd1 = 0;
-    bool finished = false;
-    while(!finished && Serial.available()) {
-        switch(char val = Serial.read()) {
-            case '#':
-                finished = true;
-                break;
-            case ':':
-                cmd0 = cmd1 = 0;
-                break;
-            default:
-                if(!cmd0)
-                    cmd0 = val;
-                else
-                    cmd1 = val;
-                break;
-        }
-    }
+    // Communicate using lx200 protocol
+    lx200Comm(ra, dec);
 
-    if(finished) {
-        switch(cmd1) {
-            case 'R':
-                Serial.print("03:00:00#");
-                digitalWrite(13, HIGH);
-                break;
-            case 'D':
-                Serial.print("+45*00#");
-                digitalWrite(12, HIGH);
-                break;
-        }
-        cmd0 = cmd1 = 0;
-    } else {
-        digitalWrite(12, LOW);
-        digitalWrite(13, LOW);
-    }
-    */
-
-    delay(100);
+    //eSerial.printf("%3.2f, %3.2f\n", ra, dec);
+    //long raSec = (long) (ra * 43200 / PI);
+    //eSerial.printf("%02ld:%02ld:%02ld#\n", raSec / 3600, raSec % 3600 / 60, raSec % 60);
 }
