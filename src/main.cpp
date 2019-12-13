@@ -189,8 +189,8 @@ void loop() {
     auto north = project_to_plane(mag, acc);
     auto heading = project_to_plane(forward, acc);
 
-    azi << angle_between(heading, north);
-    alt << PI/2 - angle_between_normalized(acc, forward); // pi/2 - angle to axis = angle to plane prep. to axis
+    azi << angle_between(normalize(heading), normalize(north));
+    alt << PI/2 - abs(angle_between(acc, forward)); // pi/2 - |angle to axis| = angle to plane prep. to axis
 
     // Calculate right accension and declination
     double ra = 0, dec = 0;

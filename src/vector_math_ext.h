@@ -3,6 +3,11 @@
 #include <vector_math.h>
 
 namespace vmath {
+    template <typename T>
+    T sign(T num) {
+        return (num > 0) - (num < 0);
+    }
+
     template<typename T>
     inline vec3<T> project_to_plane(vec3<T> a, vec3<T> norm) {
         return a - dot(a, norm) * norm;
@@ -10,12 +15,8 @@ namespace vmath {
 
     template<typename T>
     inline T angle_between(vec3<T> a, vec3<T> b) {
-        return acos(dot(a, b) / (length(a) * length(b)));
-    }
-
-    template<typename T>
-    inline T angle_between_normalized(vec3<T> a, vec3<T> b) {
-        return acos(dot(a, b));
+        double s = sign(cross(a, b).z); // signess of the angle
+        return s * acos(dot(a, b));
     }
 
     template<typename T>
