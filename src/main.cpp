@@ -7,6 +7,7 @@
 
 #include "calibrate.h"
 #include "smoother.h"
+#include "vector_math_ext.h"
 
 #define LED0 13
 #define LED1 12
@@ -185,11 +186,11 @@ void loop() {
 
     // Calculate altitude and azimuth
     auto forward = vec3<double> {0, 1, 0};
-    auto north = mag - dot(mag, acc) * acc; // mag's projection to plane prependicular to acc
-    auto heading = forward - dot(forward, acc) * acc; // forward's projection to ^
+    auto north = project_to_plane(mag, acc);
+    auto heading = project_to_plane(forward, acc);
 
-    azi << acos(dot(heading, normalize(north)) / length(heading)); // angle between heading and north
-    alt << asin(dot(acc, forward)); // angle between acc vector and xz plane
+    azi << angle_between(heading, north);
+    alt << PI/2 - angle_between_normalized(acc, forward); // pi/2 - angle to axis = angle to plane prep. to axis
 
     // Calculate right accension and declination
     double ra = 0, dec = 0;

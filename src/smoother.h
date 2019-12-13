@@ -25,10 +25,10 @@ struct Smoother {
     }
 
     double getValue() {
-        double sum = 0;
+        double avg = 0;
         for(int i = 0; i < numSamples; i++)
-            sum += vals[i];
-        return sum / numSamples;
+            avg += vals[i] / numSamples;
+        return avg;
     }
 
     Smoother &operator<<(double val) {
