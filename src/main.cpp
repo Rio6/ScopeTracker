@@ -26,8 +26,8 @@ MagCalibration magCali;
 Button btn(BTN);
 Button joyBtn(JOYB);
 
-Smoother azi(NUM_SAMPLES);
-Smoother alt(NUM_SAMPLES);
+Smoother azi(NUM_SAMPLES, true);
+Smoother alt(NUM_SAMPLES, true);
 double lst = 0, lat = 0; // Can be changed with joy stick
 
 // Altitude and azimuth to right accension and declination. All radians
