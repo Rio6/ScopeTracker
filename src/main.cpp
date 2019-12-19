@@ -1,13 +1,14 @@
 #include <Arduino.h>
 #include <Wire.h>
 
+#include <printf.h>
 #include <JC_Button.h>
-#include <PrintEx.h>
 #include <vector_math.h>
 
 #include "calibrate.h"
 #include "smoother.h"
 #include "vector_math_ext.h"
+#include "printf.h"
 
 #define LED0 13
 #define LED1 12
@@ -20,7 +21,6 @@ const int NUM_SAMPLES = 10;
 
 using namespace vmath;
 
-StreamEx eSerial = Serial;
 MagCalibration magCali;
 
 Button btn(BTN);
@@ -47,9 +47,11 @@ void alazToRade(double alt, double azi, double lst, double lat, double &ra, doub
      * also, RA = LST - H
      */
 
-    dec = asin(sin(alt) * sin(lat) + cos(alt) * cos(lat) * cos(azi));
-    ra = fmod(lst - acos((sin(alt) - sin(lat) * sin(dec)) / (cos(lat) * cos(dec))), 2 * PI);
+    // Using `constrain` here because float point error (i think) makes it go above 1.0
+    ra = fmod(lst - acos(constrain((sin(alt) - sin(lat) * sin(dec)) / (cos(lat) * cos(dec)), 0.0, 1.0)), 2 * PI);
     if(ra < 0) ra += 2 * PI;
+
+    dec = asin(sin(alt) * sin(lat) + cos(alt) * cos(lat) * cos(azi));
 }
 
 // Blocks until a :GD# or :GR# command is recieved
@@ -81,20 +83,22 @@ void lx200Comm(double ra, double dec) {
         case 'R':
             {
                 long raSec = (long) (ra * 43200 / PI);
-                eSerial.printf("%02ld:%02ld:%02ld#", raSec / 3600, raSec % 3600 / 60, raSec % 60);
-                //Serial.prlong("03:00:00#");
+                printf("%02ld:%02ld:%02ld#", raSec / 3600, raSec % 3600 / 60, raSec % 60);
                 digitalWrite(LED0, HIGH);
                 break;
             }
         case 'D':
             {
-                long decSec = (long) abs(dec * 43200 / PI);
-                eSerial.printf("%s%02ld*%02ld#", dec >= 0 ? "+" : "-", decSec / 3600, decSec % 3600 / 60);
-                //Serial.print("+45*00#");
+                long decSec = (long) abs(dec * 648000 / PI);
+                printf("%s%02ld*%02ld#", dec >= 0 ? "+" : "-", decSec / 3600, decSec % 3600 / 60);
                 digitalWrite(LED1, HIGH);
                 break;
             }
     }
+}
+
+void _putchar(char c) { // for printf
+    Serial.print(c);
 }
 
 void setup() {
@@ -160,7 +164,6 @@ void loop() {
     acc.x = Wire.read() << 8 | Wire.read();
     acc.y = Wire.read() << 8 | Wire.read();
     acc.z = Wire.read() << 8 | Wire.read();
-    acc = normalize(acc); // Easier calculations
 
     double temp = ((Wire.read() << 8 | Wire.read()) + 521) / 340.0;
 
@@ -182,14 +185,19 @@ void loop() {
 
     // Apply calibration
     mag += magCali.offset;
-    mag *= magCali.scale; // Becomes normalized
+    mag *= magCali.scale;
+
+    // Easier calculations
+    acc = normalize(acc);
+    gyro = gyro / 131.0 * 180.0 / PI; // ra/s
+    mag = normalize(mag);
 
     // Calculate altitude and azimuth
     auto forward = vec3<double> {0, 1, 0};
     auto north = project_to_plane(mag, acc);
     auto heading = project_to_plane(forward, acc);
 
-    azi << angle_between(normalize(heading), normalize(north));
+    azi << angle_between(heading, north);
     alt << PI/2 - abs(angle_between(acc, forward)); // pi/2 - |angle to axis| = angle to plane prep. to axis
 
     // Calculate right accension and declination
@@ -199,7 +207,5 @@ void loop() {
     // Communicate using lx200 protocol
     lx200Comm(ra, dec);
 
-    //eSerial.printf("%3.2f, %3.2f\n", ra, dec);
-    //long raSec = (long) (ra * 43200 / PI);
-    //eSerial.printf("%02ld:%02ld:%02ld#\n", raSec / 3600, raSec % 3600 / 60, raSec % 60);
+    //printf("%3.2f, %3.2f\n", alt.getValue(), azi.getValue());
 }

@@ -1,13 +1,10 @@
 #include <Arduino.h>
 #include <EEPROM.h>
 #include <Wire.h>
-#include <PrintEx.h>
 
 #include "calibrate.h"
 
 using namespace vmath;
-
-extern StreamEx eSerial;
 
 template <int SIGN>
 struct MaxList {
@@ -17,7 +14,7 @@ struct MaxList {
     void update(double val) {
         for(double &num : nums) {
             if(val * SIGN > num * SIGN) {
-                eSerial.printf("Max %4.2f => %4.2f\n", num, val);
+                printf("Max %4.2f => %4.2f\n", num, val);
                 num = val;
                 break;
             }
@@ -69,7 +66,7 @@ MagCalibration calibrateMag() {
         if(changed) {
             cali.offset = vec3<double> {x.offset(), y.offset(), z.offset()};
             cali.scale = vec3<double> {x.scale(), y.scale(), z.scale()};
-            eSerial.printf("shift: %3.2f %3.2f %3.2f scale: %3.8f, %3.8f, %3.8f\n", cali.offset.x, cali.offset.y, cali.offset.z, cali.scale.x, cali.scale.y, cali.scale.z);
+            printf("shift: %3.2f %3.2f %3.2f scale: %3.8f, %3.8f, %3.8f\n", cali.offset.x, cali.offset.y, cali.offset.z, cali.scale.x, cali.scale.y, cali.scale.z);
             lastChanged = millis();
         }
     }
