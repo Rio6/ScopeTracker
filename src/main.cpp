@@ -48,8 +48,8 @@ void alazToRade(double alt, double azi, double lst, double lat, double &ra, doub
      */
 
     // Using `constrain` here because float point error (i think) makes it go above 1.0
-    ra = fmod(lst - acos(constrain((sin(alt) - sin(lat) * sin(dec)) / (cos(lat) * cos(dec)), 0.0, 1.0)), 2 * PI);
-    if(ra < 0) ra += 2 * PI;
+    ra = lst - acos(constrain((sin(alt) - sin(lat) * sin(dec)) / (cos(lat) * cos(dec)), 0.0, 1.0));
+    ra = fmod(ra, PI * 2) + (ra < 0 ? PI * 2 : 0);
 
     dec = asin(sin(alt) * sin(lat) + cos(alt) * cos(lat) * cos(azi));
 }
@@ -154,6 +154,9 @@ void loop() {
     else if(joyY > 624)
         lat += 0.1;
 
+    if(lst < 0) lst += PI * 2; else if(lst >= PI * 2) lst -= PI * 2;
+    if(lat < -PI/2) lat += PI; else if(lat >= PI/2) lat -= PI;
+
     // MPU6050
     Wire.beginTransmission(0x68);
     Wire.write(0x3B);
@@ -197,7 +200,7 @@ void loop() {
     auto north = project_to_plane(mag, acc);
     auto heading = project_to_plane(forward, acc);
 
-    azi << angle_between(heading, north);
+    azi << angle_between(heading, north) * sign(cross(heading, north).z);
     alt << PI/2 - abs(angle_between(acc, forward)); // pi/2 - |angle to axis| = angle to plane prep. to axis
 
     // Calculate right accension and declination
