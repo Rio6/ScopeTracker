@@ -9,7 +9,7 @@ namespace vmath {
     }
 
     template <typename T>
-    void try_normalize(vec3<T> &v) {
+    void try_normalize(T &v) {
         if(abs(dot(v, v) - 1.0) > 1e-6) v = normalize(v);
     }
 

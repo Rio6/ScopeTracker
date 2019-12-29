@@ -17,7 +17,7 @@
 #define JOYY A2
 #define JOYB 10
 
-const int NUM_SAMPLES = 10;
+const int NUM_SAMPLES = 20;
 
 using namespace vmath;
 
