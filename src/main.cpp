@@ -56,28 +56,26 @@ void alazToRade(double alt, double azi, double lst, double lat, double &ra, doub
 
 // Blocks until a :GD# or :GR# command is recieved
 void lx200Comm(double ra, double dec) {
-    char cmd0 = 0, cmd1 = 0;
+    static char cmd0 = 0, cmd1 = 0;
+
+    if(!Serial.available()) return;
 
     digitalWrite(LED0, LOW);
     digitalWrite(LED1, LOW);
 
-    while(true) {
-        while(!Serial.available());
-        switch(char val = Serial.read()) {
-            case '#':
-                goto endLoop;
-            case ':':
-                cmd0 = cmd1 = 0;
-                break;
-            default:
-                if(!cmd0)
-                    cmd0 = val;
-                else
-                    cmd1 = val;
-                break;
-        }
+    switch(char val = Serial.read()) {
+        case '#':
+            break;
+        case ':':
+            cmd0 = cmd1 = 0;
+            return;
+        default:
+            if(!cmd0)
+                cmd0 = val;
+            else
+                cmd1 = val;
+            return;
     }
-    endLoop:
 
     switch(cmd1) {
         case 'R':
