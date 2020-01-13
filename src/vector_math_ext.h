@@ -9,6 +9,13 @@ namespace vmath {
     }
 
     template <typename T>
+    inline T wrap(T num, T min, T max) {
+        double wrapped = fmod(num-min, max-min);
+        if(wrapped < 0) wrapped += max-min;
+        return wrapped + min;
+    }
+
+    template <typename T>
     void try_normalize(T &v) {
         if(abs(dot(v, v) - 1.0) > 1e-6) v = normalize(v);
     }

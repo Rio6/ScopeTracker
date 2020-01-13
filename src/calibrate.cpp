@@ -2,11 +2,15 @@
 #include <EEPROM.h>
 #include <Wire.h>
 
+#ifdef DEBUG
 #include <printf.h>
+#endif
 
 #include "calibrate.h"
 
 using namespace vmath;
+
+extern const int LED0; // in main.cpp
 
 template <int SIGN>
 struct MaxList {
@@ -16,7 +20,9 @@ struct MaxList {
     void update(double val) {
         for(double &num : nums) {
             if(val * SIGN > num * SIGN) {
+#ifdef DEBUG
                 printf("Max %4.2f => %4.2f\n", num, val);
+#endif
                 num = val;
                 break;
             }
@@ -66,10 +72,15 @@ MagCalibration calibrateMag() {
         changed |= x.update(-(Wire.read() << 8 | Wire.read())); // so swap x y, invert x
 
         if(changed) {
+            digitalWrite(LED0, HIGH);
             cali.offset = vec3<double> {x.offset(), y.offset(), z.offset()};
             cali.scale = vec3<double> {x.scale(), y.scale(), z.scale()};
+#ifdef DEBUG
             printf("shift: % 3.2f % 3.2f % 3.2f scale: % 1.8f, % 1.8f, % 1.8f\n", cali.offset.x, cali.offset.y, cali.offset.z, cali.scale.x, cali.scale.y, cali.scale.z);
+#endif
             lastChanged = millis();
+        } else if(lastChanged - millis() > 100) {
+            digitalWrite(LED0, LOW);
         }
     }
 

@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <Wire.h>
 
+#include <CoordsLib.h>
 #include <printf.h>
 #include <JC_Button.h>
 #include <vector_math.h>
@@ -10,86 +11,43 @@
 #include "vector_math_ext.h"
 #include "printf.h"
 
-#define LED0 13
-#define LED1 12
-#define BTN 11
-#define JOYX A3
-#define JOYY A2
-#define JOYB 10
+// Pins
+extern const int LED0 = 13;
+extern const int LED1 = 12;
+extern const int BTN  = 11;
+extern const int JOYX = A3;
+extern const int JOYY = A2;
+extern const int JOYB = 10;
 
 const int NUM_SAMPLES = 20;
+
+const double JOY_THRES = 0.1;
+const double JOY_SCALE = PI/3600;
 
 using namespace vmath;
 
 MagCalibration magCali;
+CoordsLib coords;
 
 Button btn(BTN);
 Button joyBtn(JOYB);
 
-Smoother azi(NUM_SAMPLES, true);
-Smoother alt(NUM_SAMPLES, true);
-double lst = 0, lat = 0; // Can be changed with joy stick
+double ra = 0, dec = 0;
+Smoother<double> azi(NUM_SAMPLES, true);
+Smoother<double> alt(NUM_SAMPLES, true);
 
-// Altitude and azimuth to right accension and declination. All radians
-void alazToRade(double alt, double azi, double lst, double lat, double &ra, double &dec) {
-    /*
-     * https://www.cloudynights.com/topic/448682-help-w-conversion-of-altaz-to-radec-for-dsc/?p=5811415
-     *
-     * sinD = sinA * sinL + cosA * cosL * cosAZ
-     * cosH = (sinA - sinL * sinD) / (cosL * cosD)
-     *
-     * D=declination
-     * H=hour angle
-     * A=altitude
-     * AZ=azimuth
-     * L=latitude
-     *
-     * also, RA = LST - H
-     */
-
-    // Using `constrain` here because float point error (i think) makes it go above 1.0
-    ra = lst - acos(constrain((sin(alt) - sin(lat) * sin(dec)) / (cos(lat) * cos(dec)), 0.0, 1.0));
-    ra = fmod(ra, PI * 2) + (ra < 0 ? PI * 2 : 0);
-
-    dec = asin(sin(alt) * sin(lat) + cos(alt) * cos(lat) * cos(azi));
-}
-
-// Blocks until a :GD# or :GR# command is recieved
 void lx200Comm(double ra, double dec) {
-    static char cmd0 = 0, cmd1 = 0;
-
-    if(!Serial.available()) return;
-
-    digitalWrite(LED0, LOW);
-    digitalWrite(LED1, LOW);
-
-    switch(char val = Serial.read()) {
-        case '#':
-            break;
-        case ':':
-            cmd0 = cmd1 = 0;
-            return;
-        default:
-            if(!cmd0)
-                cmd0 = val;
-            else
-                cmd1 = val;
-            return;
-    }
-
-    switch(cmd1) {
+    switch(Serial.read()) {
         case 'R':
             {
                 long raSec = (long) (ra * 43200 / PI);
                 printf("%02ld:%02ld:%02ld#", raSec / 3600, raSec % 3600 / 60, raSec % 60);
-                digitalWrite(LED0, HIGH);
                 break;
             }
         case 'D':
             {
                 long decSec = (long) abs(dec * 648000 / PI);
                 printf("%s%02ld*%02ld#", dec >= 0 ? "+" : "-", decSec / 3600, decSec % 3600 / 60);
-                digitalWrite(LED1, HIGH);
                 break;
             }
     }
@@ -115,6 +73,9 @@ void setup() {
     Wire.write(0x00); // Continuous measurement mode
     Wire.endTransmission();
 
+    // Set up CoordsLib
+    coords.setTime(millis() / 1000);
+
     // Joystick
     pinMode(JOYX, INPUT);
     pinMode(JOYY, INPUT);
@@ -130,30 +91,7 @@ void setup() {
 }
 
 void loop() {
-    // Process input
-    btn.read();
-    joyBtn.read();
-
-    if(btn.pressedFor(3000)) {
-        // Calibrate magnetometer
-        digitalWrite(LED0, HIGH);
-        magCali = calibrateMag();
-        digitalWrite(LED0, LOW);
-    }
-
-    int joyX = analogRead(JOYX);
-    int joyY = analogRead(JOYY);
-    if(joyX < 400)
-        lst -= 0.1;
-    else if(joyX > 624)
-        lst += 0.1;
-    if(joyY < 400)
-        lat -= 0.1;
-    else if(joyY > 624)
-        lat += 0.1;
-
-    if(lst < 0) lst += PI * 2; else if(lst >= PI * 2) lst -= PI * 2;
-    if(lat < -PI/2) lat += PI; else if(lat >= PI/2) lat -= PI;
+    long t = millis() / 1000;
 
     // MPU6050
     Wire.beginTransmission(0x68);
@@ -190,7 +128,7 @@ void loop() {
 
     // Easier calculations
     acc = normalize(acc);
-    gyro = gyro / 131.0 * 180.0 / PI; // ra/s
+    gyro = gyro / 131.0 * 180.0 / PI; // radians/s
     mag = normalize(mag);
 
     // Calculate altitude and azimuth
@@ -201,12 +139,63 @@ void loop() {
     azi << angle_between(heading, north) * sign(cross(heading, north).z);
     alt << PI/2 - abs(angle_between(acc, forward)); // pi/2 - |angle to axis| = angle to plane prep. to axis
 
-    // Calculate right accension and declination
-    double ra = 0, dec = 0;
-    alazToRade(alt, azi, lst, lat, ra, dec);
+    // Human input
+    btn.read();
+    joyBtn.read();
+
+    // Magnetometer calibration
+    if(btn.wasPressed()) {
+        magCali = calibrateMag();
+        digitalWrite(LED0, HIGH);
+        delay(500); // Lazy way to make led more visible
+        digitalWrite(LED0, LOW);
+    }
+
+    // Get right accension and declination
+
+    static int refCount = 0;
+    if(refCount < 3) {
+        // Aligning. Use joystick to change ra and dec to match the scope
+        double joyX = analogRead(JOYX) / 1024.0 - 0.5;
+        double joyY = analogRead(JOYY) / 1024.0 - 0.5;
+
+        if(joyX < -JOY_THRES || joyX > JOY_THRES)
+            ra = wrap(ra + joyX * JOY_SCALE, 0.0, 2*PI);
+        if(joyY < -JOY_THRES || joyY > JOY_THRES)
+            dec = wrap(dec + joyY * JOY_SCALE, -PI/2, PI/2);
+
+        if(joyBtn.wasPressed()) { // Set the reference
+            switch(refCount) {
+                case 0: coords.setRef_1(ra, dec, t, azi, alt); break;
+                case 1: coords.setRef_1(ra, dec, t, azi, alt); break;
+                case 2: coords.setRef_1(ra, dec, t, azi, alt); break;
+            }
+            refCount++;
+        }
+
+        // Show current reference count using LED
+        switch(refCount) {
+            case 0:  digitalWrite(LED0, HIGH); digitalWrite(LED1,  LOW); break;
+            case 1:  digitalWrite(LED0,  LOW); digitalWrite(LED1, HIGH); break;
+            case 2:  digitalWrite(LED0, HIGH); digitalWrite(LED1, HIGH); break;
+            default: digitalWrite(LED0,  LOW); digitalWrite(LED1,  LOW); break;
+        }
+
+    } else if(joyBtn.pressedFor(3000)) {
+        // Start aligning
+        refCount = 0;
+
+    } else {
+        digitalWrite(LED0, LOW); digitalWrite(LED1, LOW);
+
+        // Calculate right accension and declination
+        coords.getECoords(azi, alt, t, &ra, &dec);
+    }
 
     // Communicate using lx200 protocol
+#ifndef DEBUG
     lx200Comm(ra, dec);
-
-    //printf("%3.2f, %3.2f\n", alt.getValue(), azi.getValue());
+#else
+    printf("%lf %lf\n", ra, dec);
+#endif
 }

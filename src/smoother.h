@@ -1,18 +1,19 @@
 #pragma once
 
+template <typename T>
 struct Smoother {
     int numSamples;
     int index = 0;
-    double *vals;
+    T *vals;
     bool circular;
 
     Smoother(int numSamples, bool circular = false)
         : numSamples(numSamples), circular(circular) {
-        vals = new double[numSamples];
+        vals = new T[numSamples];
     }
 
     Smoother(const Smoother &other) : Smoother(other.numSamples, other.circular) {
-        memcpy(vals, other.vals, numSamples * sizeof(double));
+        memcpy(vals, other.vals, numSamples * sizeof(T));
     }
 
     Smoother &operator=(const Smoother&) = delete;
@@ -21,33 +22,33 @@ struct Smoother {
         delete[] vals;
     }
 
-    void update(double val) {
+    void update(T val) {
         vals[index] = val;
         ++index %= numSamples;
     }
 
-    double getValue() {
+    T getValue() {
         if(circular) {
-            double avgSin = 0, avgCos = 0;
+            T avgSin = 0, avgCos = 0;
             for(int i = 0; i < numSamples; i++) {
                 avgSin += sin(vals[i]) / numSamples;
                 avgCos += cos(vals[i]) / numSamples;
             }
             return avgCos == 0 && avgSin == 0 ? 0 : atan2(avgSin, avgCos);
         } else {
-            double avg = 0;
+            T avg = 0;
             for(int i = 0; i < numSamples; i++)
                 avg += vals[i] / numSamples;
             return avg;
         }
     }
 
-    Smoother &operator<<(double val) {
+    Smoother &operator<<(T val) {
         update(val);
         return *this;
     }
 
-    operator double() {
+    operator T() {
         return getValue();
     }
 };
