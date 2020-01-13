@@ -74,7 +74,7 @@ void setup() {
     Wire.endTransmission();
 
     // Set up CoordsLib
-    coords.setTime(millis() / 1000);
+    coords.setTime(millis() / 1000.0);
 
     // Joystick
     pinMode(JOYX, INPUT);
@@ -91,7 +91,7 @@ void setup() {
 }
 
 void loop() {
-    long t = millis() / 1000;
+    double t = millis() / 1000;
 
     // MPU6050
     Wire.beginTransmission(0x68);
@@ -153,22 +153,22 @@ void loop() {
 
     // Get right accension and declination
 
-    static int refCount = 0;
+    static int refCount = coords.isConfigured() ? 3 : 0;
     if(refCount < 3) {
         // Aligning. Use joystick to change ra and dec to match the scope
         double joyX = analogRead(JOYX) / 1024.0 - 0.5;
         double joyY = analogRead(JOYY) / 1024.0 - 0.5;
 
         if(joyX < -JOY_THRES || joyX > JOY_THRES)
-            ra = wrap(ra + joyX * JOY_SCALE, 0.0, 2*PI);
+            ra += joyX * JOY_SCALE;
         if(joyY < -JOY_THRES || joyY > JOY_THRES)
-            dec = wrap(dec + joyY * JOY_SCALE, -PI/2, PI/2);
+            dec += joyY * JOY_SCALE;
 
         if(joyBtn.wasPressed()) { // Set the reference
             switch(refCount) {
                 case 0: coords.setRef_1(ra, dec, t, azi, alt); break;
-                case 1: coords.setRef_1(ra, dec, t, azi, alt); break;
-                case 2: coords.setRef_1(ra, dec, t, azi, alt); break;
+                case 1: coords.setRef_2(ra, dec, t, azi, alt); break;
+                case 2: coords.setRef_3(ra, dec, t, azi, alt); break;
             }
             refCount++;
         }
@@ -186,16 +186,17 @@ void loop() {
         refCount = 0;
 
     } else {
-        digitalWrite(LED0, LOW); digitalWrite(LED1, LOW);
-
         // Calculate right accension and declination
         coords.getECoords(azi, alt, t, &ra, &dec);
     }
+
+    ra = wrap(ra, 0.0, 2*PI);
+    dec = wrap(dec, -PI/2, PI/2);
 
     // Communicate using lx200 protocol
 #ifndef DEBUG
     lx200Comm(ra, dec);
 #else
-    printf("%lf %lf\n", ra, dec);
+    printf("azi %lf alt %lf ra %lf dec %lf\n", azi.getValue(), alt.getValue(), ra, dec);
 #endif
 }

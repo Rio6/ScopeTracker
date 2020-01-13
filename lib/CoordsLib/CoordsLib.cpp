@@ -5,7 +5,8 @@
 
 CoordsLib::CoordsLib(){
 	_t0 = 0;
-	_k =  1.002737908; // Constant.. Relationship between the solar time (M) and the sidereal time (S): (S = M * 1.002737908)
+	//_k =  1.002737908; // Constant.. Relationship between the solar time (M) and the sidereal time (S): (S = M * 1.002737908)
+	_k =  1.002737908 / 86400 * 2*M_PI;
 	_isSetR1 = false;
 	_isSetR2 = false;
 	_isSetR3 = false;
