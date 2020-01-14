@@ -19,10 +19,11 @@ extern const int JOYX = A3;
 extern const int JOYY = A2;
 extern const int JOYB = 10;
 
-const int NUM_SAMPLES = 20;
+const int NUM_SAMPLES = 50;
 
 const double JOY_THRES = 0.1;
-const double JOY_SCALE = PI/3600;
+const double JOY_SPEED_FAST = 2*PI / 500;
+const double JOY_SPEED_SLOW = 2*PI / 3000;
 
 using namespace vmath;
 
@@ -144,7 +145,7 @@ void loop() {
     joyBtn.read();
 
     // Magnetometer calibration
-    if(btn.wasPressed()) {
+    if(btn.pressedFor(2000)) {
         magCali = calibrateMag();
         digitalWrite(LED0, HIGH);
         delay(500); // Lazy way to make led more visible
@@ -156,15 +157,20 @@ void loop() {
     static int refCount = coords.isConfigured() ? 3 : 0;
     if(refCount < 3) {
         // Aligning. Use joystick to change ra and dec to match the scope
+        static bool fastMove = true;
+
         double joyX = analogRead(JOYX) / 1024.0 - 0.5;
         double joyY = analogRead(JOYY) / 1024.0 - 0.5;
 
-        if(joyX < -JOY_THRES || joyX > JOY_THRES)
-            ra += joyX * JOY_SCALE;
-        if(joyY < -JOY_THRES || joyY > JOY_THRES)
-            dec += joyY * JOY_SCALE;
+        if(joyBtn.wasPressed())
+            fastMove = !fastMove;
 
-        if(joyBtn.wasPressed()) { // Set the reference
+        if(joyX < -JOY_THRES || joyX > JOY_THRES)
+            ra += joyX * (fastMove ? JOY_SPEED_FAST : JOY_SPEED_SLOW);
+        if(joyY < -JOY_THRES || joyY > JOY_THRES)
+            dec += joyY * (fastMove ? JOY_SPEED_FAST : JOY_SPEED_SLOW);
+
+        if(btn.wasPressed()) { // Set the reference
             switch(refCount) {
                 case 0: coords.setRef_1(ra, dec, t, azi, alt); break;
                 case 1: coords.setRef_2(ra, dec, t, azi, alt); break;
@@ -174,16 +180,15 @@ void loop() {
         }
 
         // Show current reference count using LED
-        switch(refCount) {
-            case 0:  digitalWrite(LED0, HIGH); digitalWrite(LED1,  LOW); break;
-            case 1:  digitalWrite(LED0,  LOW); digitalWrite(LED1, HIGH); break;
-            case 2:  digitalWrite(LED0, HIGH); digitalWrite(LED1, HIGH); break;
-            default: digitalWrite(LED0,  LOW); digitalWrite(LED1,  LOW); break;
-        }
+        if((refCount+1) & 0b01) digitalWrite(LED0, HIGH);
+        else                  digitalWrite(LED0, LOW);
+        if((refCount+1) & 0b10) digitalWrite(LED1, HIGH);
+        else                  digitalWrite(LED1, LOW);
 
-    } else if(joyBtn.pressedFor(3000)) {
+    } else if(btn.wasPressed()) {
         // Start aligning
         refCount = 0;
+        ra = dec = 0;
 
     } else {
         // Calculate right accension and declination
