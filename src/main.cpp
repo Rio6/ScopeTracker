@@ -76,7 +76,7 @@ void lx200Comm(double *ra, double *dec, bool update=false) {
 
                 int h=0, m=0, s=0;
                 if(sscanf(msg, "%d:%d:%d", &h, &m, &s) >= 3) {
-                    *ra = (h * 3600 + m * 60 + s) / 43200.0 * PI;
+                    *ra = (h * 3600L + m * 60L + s) / 43200.0 * PI;
                     printf("1");
                     break;
                 }
