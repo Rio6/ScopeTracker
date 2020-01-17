@@ -40,7 +40,7 @@ Smoother<double> alt(NUM_SAMPLES, true);
 bool update_ref = false;
 int refCount = 0;
 
-void lx200Comm(double &ra, double &dec, bool update=false) {
+void lx200Comm(double *ra, double *dec, bool update=false) {
     static bool process = false;
 
     if(!Serial.available()) return;
@@ -58,50 +58,50 @@ void lx200Comm(double &ra, double &dec, bool update=false) {
             break;
         case 'R': // get ra
             {
-                long raSec = (long) (ra * 43200 / PI);
+                long raSec = (long) (*ra * 43200 / PI);
                 printf("%02ld:%02ld:%02ld#", raSec / 3600, raSec % 3600 / 60, raSec % 60);
                 break;
             }
         case 'D': // get dec
             {
-                long decSec = (long) abs(dec * 648000 / PI);
+                long decSec = (long) abs(*dec * 648000 / PI);
                 printf("%s%02ld*%02ld#", dec >= 0 ? "+" : "-", decSec / 3600, decSec % 3600 / 60);
                 break;
             }
         case 'r': // set ra
-            {
-                if(!update) break;
+            if(update) {
                 const int LEN = 8; // HH:MM:SS
                 char msg[LEN+1] = {0};
                 Serial.readBytes(msg, LEN);
 
                 int h=0, m=0, s=0;
                 if(sscanf(msg, "%d:%d:%d", &h, &m, &s) >= 3) {
-                    ra = (h * 3600 + m * 60 + s) / 43200.0 * PI;
+                    *ra = (h * 3600 + m * 60 + s) / 43200.0 * PI;
                     printf("1");
-                } else {
-                    printf("0");
+                    break;
                 }
-
-                break;
             }
+
+            printf("0");
+            break;
+
         case 'd': // set dec
-            {
-                if(!update) break;
+            if(update) {
                 const int LEN = 6; // sDD*MM
                 char msg[LEN+1] = {0};
                 Serial.readBytes(msg, LEN);
 
                 int deg=0, m=0;
                 if(sscanf(msg, "%d*%d", &deg, &m) >= 2) {
-                    dec = (deg + m / 60.0 * sign(deg)) / 180.0 * PI;
+                    *dec = (deg + m / 60.0 * sign(deg)) / 180.0 * PI;
                     printf("1");
-                } else {
-                    printf("0");
+                    break;
                 }
-
-                break;
             }
+
+            printf("0");
+            break;
+
         case 'M': // sync
             update_ref = true;
         case 'S': // slew
@@ -121,7 +121,7 @@ void setup() {
     // Setup MPU-6050
     Wire.beginTransmission(0x68);
     Wire.write(0x6B);
-    Wire.write(0); // Disable power save
+    Wire.write(0x00); // Disable power save
     Wire.endTransmission(true);
 
     // Setup HMC5883
@@ -259,7 +259,7 @@ void loop() {
 
     // Communicate using lx200 protocol
 #ifndef DEBUG
-    lx200Comm(ra, dec, refCount < 3);
+    lx200Comm(&ra, &dec, refCount < 3);
 #else
     printf("azi %lf alt %lf ra %lf dec %lf\n", azi.getValue(), alt.getValue(), ra, dec);
 #endif
