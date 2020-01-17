@@ -37,20 +37,76 @@ double ra = 0, dec = 0;
 Smoother<double> azi(NUM_SAMPLES, true);
 Smoother<double> alt(NUM_SAMPLES, true);
 
-void lx200Comm(double ra, double dec) {
+bool update_ref = false;
+int refCount = 0;
+
+void lx200Comm(double &ra, double &dec, bool update=false) {
+    static bool process = false;
+
+    if(!Serial.available()) return;
+
+    if(!process) {
+        if(Serial.read() != ':') {
+            process = true;
+        }
+        return;
+    }
+
     switch(Serial.read()) {
-        case 'R':
+        case ':':
+            process = false;
+            break;
+        case 'R': // get ra
             {
                 long raSec = (long) (ra * 43200 / PI);
                 printf("%02ld:%02ld:%02ld#", raSec / 3600, raSec % 3600 / 60, raSec % 60);
                 break;
             }
-        case 'D':
+        case 'D': // get dec
             {
                 long decSec = (long) abs(dec * 648000 / PI);
                 printf("%s%02ld*%02ld#", dec >= 0 ? "+" : "-", decSec / 3600, decSec % 3600 / 60);
                 break;
             }
+        case 'r': // set ra
+            {
+                if(!update) break;
+                const int LEN = 8; // HH:MM:SS
+                char msg[LEN+1] = {0};
+                Serial.readBytes(msg, LEN);
+
+                int h=0, m=0, s=0;
+                if(sscanf(msg, "%d:%d:%d", &h, &m, &s) >= 3) {
+                    ra = (h * 3600 + m * 60 + s) / 43200.0 * PI;
+                    printf("1");
+                } else {
+                    printf("0");
+                }
+
+                break;
+            }
+        case 'd': // set dec
+            {
+                if(!update) break;
+                const int LEN = 6; // sDD*MM
+                char msg[LEN+1] = {0};
+                Serial.readBytes(msg, LEN);
+
+                int deg=0, m=0;
+                if(sscanf(msg, "%d*%d", &deg, &m) >= 2) {
+                    dec = (deg + m / 60.0 * sign(deg)) / 180.0 * PI;
+                    printf("1");
+                } else {
+                    printf("0");
+                }
+
+                break;
+            }
+        case 'M': // sync
+            update_ref = true;
+        case 'S': // slew
+            printf("1#");
+            break;
     }
 }
 
@@ -154,7 +210,6 @@ void loop() {
 
     // Get right accension and declination
 
-    static int refCount = coords.isConfigured() ? 3 : 0;
     if(refCount < 3) {
         // Aligning. Use joystick to change ra and dec to match the scope
         static bool fastMove = true;
@@ -165,17 +220,21 @@ void loop() {
         if(joyBtn.wasPressed())
             fastMove = !fastMove;
 
+        if(btn.wasPressed())
+            update_ref = true;
+
         if(joyX < -JOY_THRES || joyX > JOY_THRES)
             ra += joyX * (fastMove ? JOY_SPEED_FAST : JOY_SPEED_SLOW);
         if(joyY < -JOY_THRES || joyY > JOY_THRES)
             dec += joyY * (fastMove ? JOY_SPEED_FAST : JOY_SPEED_SLOW);
 
-        if(btn.wasPressed()) { // Set the reference
+        if(update_ref) { // Set the reference
             switch(refCount) {
                 case 0: coords.setRef_1(ra, dec, t, azi, alt); break;
                 case 1: coords.setRef_2(ra, dec, t, azi, alt); break;
                 case 2: coords.setRef_3(ra, dec, t, azi, alt); break;
             }
+            update_ref = false;
             refCount++;
         }
 
@@ -200,7 +259,7 @@ void loop() {
 
     // Communicate using lx200 protocol
 #ifndef DEBUG
-    lx200Comm(ra, dec);
+    lx200Comm(ra, dec, refCount < 3);
 #else
     printf("azi %lf alt %lf ra %lf dec %lf\n", azi.getValue(), alt.getValue(), ra, dec);
 #endif
