@@ -65,7 +65,7 @@ void lx200Comm(double *ra, double *dec, bool update=false) {
         case 'D': // get dec
             {
                 long decSec = (long) abs(*dec * 648000 / PI);
-                printf("%s%02ld*%02ld#", dec >= 0 ? "+" : "-", decSec / 3600, decSec % 3600 / 60);
+                printf("%s%02ld*%02ld:%02ld#", *dec >= 0 ? "+" : "-", decSec / 3600, decSec % 3600 / 60, decSec % 60);
                 break;
             }
         case 'r': // set ra
@@ -87,13 +87,13 @@ void lx200Comm(double *ra, double *dec, bool update=false) {
 
         case 'd': // set dec
             if(update) {
-                const int LEN = 6; // sDD*MM
+                const int LEN = 9; // sDD*MM:SS
                 char msg[LEN+1] = {0};
                 Serial.readBytes(msg, LEN);
 
-                int deg=0, m=0;
-                if(sscanf(msg, "%d*%d", &deg, &m) >= 2) {
-                    *dec = (deg + m / 60.0 * sign(deg)) / 180.0 * PI;
+                int deg=0, m=0, s=0;
+                if(sscanf(msg, "%d*%d:%d", &deg, &m, &s) >= 3) {
+                    *dec = (deg + (m / 60.0 + s / 3600.0) * sign(deg)) / 180.0 * PI;
                     printf("1");
                     break;
                 }
