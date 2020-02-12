@@ -37,10 +37,21 @@ double ra = 0, dec = 0;
 Smoother<double> azi(NUM_SAMPLES, true);
 Smoother<double> alt(NUM_SAMPLES, true);
 
-bool update_ref = false;
+double t = 0;
 int refCount = 0;
+bool updating = false;
 
-void lx200Comm(double *ra, double *dec, bool update=false) {
+void updateRef() {
+    switch(refCount) {
+        case 0: coords.setRef_1(ra, dec, t, azi, alt); break;
+        case 1: coords.setRef_2(ra, dec, t, azi, alt); break;
+        case 2: coords.setRef_3(ra, dec, t, azi, alt); break;
+    }
+    if(refCount <= 2) refCount++;
+}
+
+
+void lx200Comm(double *ra, double *dec) {
     static bool process = false;
 
     if(!Serial.available()) return;
@@ -69,7 +80,7 @@ void lx200Comm(double *ra, double *dec, bool update=false) {
                 break;
             }
         case 'r': // set ra
-            if(update) {
+            {
                 const int LEN = 8; // HH:MM:SS
                 char msg[LEN+1] = {0};
                 Serial.readBytes(msg, LEN);
@@ -77,16 +88,17 @@ void lx200Comm(double *ra, double *dec, bool update=false) {
                 int h=0, m=0, s=0;
                 if(sscanf(msg, "%d:%d:%d", &h, &m, &s) >= 3) {
                     *ra = (h * 3600L + m * 60L + s) / 43200.0 * PI;
+                    updating = true;
                     printf("1");
                     break;
                 }
+
+                printf("0");
+                break;
             }
 
-            printf("0");
-            break;
-
         case 'd': // set dec
-            if(update) {
+            {
                 const int LEN = 9; // sDD*MM:SS
                 char msg[LEN+1] = {0};
                 Serial.readBytes(msg, LEN);
@@ -94,16 +106,18 @@ void lx200Comm(double *ra, double *dec, bool update=false) {
                 int deg=0, m=0, s=0;
                 if(sscanf(msg, "%d*%d:%d", &deg, &m, &s) >= 3) {
                     *dec = (deg + (m / 60.0 + s / 3600.0) * sign(deg)) / 180.0 * PI;
+                    updating = true;
                     printf("1");
                     break;
                 }
+
+                printf("0");
+                break;
             }
 
-            printf("0");
-            break;
-
         case 'M': // sync
-            update_ref = true;
+            updateRef();
+            updating = false;
         case 'S': // slew
             printf("1#");
             break;
@@ -148,7 +162,7 @@ void setup() {
 }
 
 void loop() {
-    double t = millis() / 1000;
+    t = millis() / 1000;
 
     // MPU6050
     Wire.beginTransmission(0x68);
@@ -201,57 +215,51 @@ void loop() {
     joyBtn.read();
 
     // Magnetometer calibration
-    if(btn.pressedFor(2000)) {
+    if(btn.pressedFor(3000)) {
         magCali = calibrateMag();
         digitalWrite(LED0, HIGH);
         delay(500); // Lazy way to make led more visible
         digitalWrite(LED0, LOW);
     }
 
-    // Get right accension and declination
+    // References reset
+    if(btn.pressedFor(1500)) refCount = 0;
 
+    // Sync through button
+    if(btn.wasPressed()) {
+        if(updating)
+            updateRef();
+        updating = !updating;
+    }
+
+    // Need 3 reference
     if(refCount < 3) {
-        // Aligning. Use joystick to change ra and dec to match the scope
-        static bool fastMove = true;
+        updating = true;
+        digitalWrite(LED1, HIGH);
+    } else {
+        digitalWrite(LED1, LOW);
+    }
 
+    if(updating) {
+        // Aligning. Use joystick to change ra and dec to match the scope
+
+        static bool fastMove = true;
         double joyX = analogRead(JOYX) / 1024.0 - 0.5;
         double joyY = analogRead(JOYY) / 1024.0 - 0.5;
 
         if(joyBtn.wasPressed())
             fastMove = !fastMove;
 
-        if(btn.wasPressed())
-            update_ref = true;
-
         if(joyX < -JOY_THRES || joyX > JOY_THRES)
             ra += joyX * (fastMove ? JOY_SPEED_FAST : JOY_SPEED_SLOW);
         if(joyY < -JOY_THRES || joyY > JOY_THRES)
             dec += joyY * (fastMove ? JOY_SPEED_FAST : JOY_SPEED_SLOW);
 
-        if(update_ref) { // Set the reference
-            switch(refCount) {
-                case 0: coords.setRef_1(ra, dec, t, azi, alt); break;
-                case 1: coords.setRef_2(ra, dec, t, azi, alt); break;
-                case 2: coords.setRef_3(ra, dec, t, azi, alt); break;
-            }
-            update_ref = false;
-            refCount++;
-        }
-
-        // Show current reference count using LED
-        if((refCount+1) & 0b01) digitalWrite(LED0, HIGH);
-        else                  digitalWrite(LED0, LOW);
-        if((refCount+1) & 0b10) digitalWrite(LED1, HIGH);
-        else                  digitalWrite(LED1, LOW);
-
-    } else if(btn.wasPressed()) {
-        // Start aligning
-        refCount = 0;
-        ra = dec = 0;
-
+        digitalWrite(LED0, HIGH);
     } else {
         // Calculate right accension and declination
         coords.getECoords(azi, alt, t, &ra, &dec);
+        digitalWrite(LED0, LOW);
     }
 
     ra = wrap(ra, 0.0, 2*PI);
@@ -259,7 +267,7 @@ void loop() {
 
     // Communicate using lx200 protocol
 #ifndef DEBUG
-    lx200Comm(&ra, &dec, refCount < 3);
+    lx200Comm(&ra, &dec);
 #else
     printf("azi %lf alt %lf ra %lf dec %lf\n", azi.getValue(), alt.getValue(), ra, dec);
 #endif
