@@ -1,0 +1,6 @@
+[package]
+name = "scope_tracker"
+version = "0.1.0"
+
+[dependencies.ruduino]
+git = "https://github.com/avr-rust/ruduino"

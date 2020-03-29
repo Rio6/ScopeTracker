@@ -1,0 +1,5 @@
+[build]
+target = "avr-atmega328p"
+
+[target.avr-atmega328p]
+runner="cargo-upload"

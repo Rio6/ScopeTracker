@@ -1,0 +1,44 @@
+#!/bin/sh
+if [ -z "$AVRDUDE_PATH" ]; then
+    echo 'AVRDUDE_PATH not set'
+    exit 1
+fi
+
+cargo="$(cargo locate-project | jq -r .root)"
+name=$(grep 'name' "$cargo" | awk -F'"' '{print $2}')
+builddir="$(dirname $1)"
+
+echo "Converting elf to hex"
+avr-objcopy -O ihex -R .eeprom "$builddir/$name.elf" "$builddir/$name.hex"
+
+if [ $? -ne 0 ]; then
+    echo "Error copying object"
+    exit 1
+fi
+
+while getopts ":p" o; do
+    case "${o}" in
+        p)
+            uploadport=${OPTARG}
+            ;;
+    esac
+done
+
+if [ -z "$uploadport" -a -n "$UPLOAD_PORT" ]; then
+    uploadport=$UPLOAD_PORT
+else
+    uploadport=$(pio device list --json-output | jq -r '.[0].port')
+fi
+
+if [ "$uploadport" == "null" ]; then
+    echo "No upload port"
+    return 1
+fi
+
+echo "Uploading to $uploadport"
+
+"$AVRDUDE_PATH/avrdude" \
+    -C "$AVRDUDE_PATH/avrdude.conf" \
+    -p atmega328p -c arduino \
+    -P "$uploadport" \
+    -U "flash:w:$builddir/$name.hex:i"
