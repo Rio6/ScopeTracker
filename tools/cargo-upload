@@ -6,10 +6,12 @@ fi
 
 cargo="$(cargo locate-project | jq -r .root)"
 name=$(grep 'name' "$cargo" | awk -F'"' '{print $2}')
-builddir="$(dirname $1)"
+
+elf=$1
+hex=${1/\.elf/.hex}
 
 echo "Converting elf to hex"
-avr-objcopy -O ihex -R .eeprom "$builddir/$name.elf" "$builddir/$name.hex"
+avr-objcopy -O ihex -R .eeprom "$elf" "$hex"
 
 if [ $? -ne 0 ]; then
     echo "Error copying object"
@@ -41,4 +43,4 @@ echo "Uploading to $uploadport"
     -C "$AVRDUDE_PATH/avrdude.conf" \
     -p atmega328p -c arduino \
     -P "$uploadport" \
-    -U "flash:w:$builddir/$name.hex:i"
+    -U "flash:w:$hex:i"
