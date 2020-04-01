@@ -22,8 +22,8 @@ pub fn prints(s: &str) {
     }
 }
 
-pub fn printb(mut n: u32, width: i32) {
-    n <<= 32 - width;
+pub fn printb(mut n: u16, width: i16) {
+    n <<= 16 - width;
     for _ in 0..width {
         if n & 0x8000 > 0 {
             printc('1');
@@ -34,15 +34,14 @@ pub fn printb(mut n: u32, width: i32) {
     }
 }
 
-pub fn printd(n: i32, width: i32) {
-    let mut div = 10;
-    for _ in 0..width {
-        div *= 10;
+pub fn printud(mut n: u16) {
+    const W: usize = 5;
+    let mut buff: [u8; W] = [0; W];
+    for i in 0..W {
+        buff[i] = (n % 10) as u8;
+        n /= 10;
     }
-
-    for _ in 0..width {
-        let c = '0' as u8 + (n / div % 10) as u8;
-        serial::transmit(c);
-        div /= 10;
+    for i in (0..W).rev() {
+        printc(('0' as u8 + buff[i]) as char);
     }
 }

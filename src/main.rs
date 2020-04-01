@@ -22,8 +22,9 @@ pub extern fn main() -> ! {
 
     loop {
         let read = adc_read(0);
-        //printb(read as u32, 16);
-        printd(read as i32, 5);
+        printb(read, 10);
+        printc('\n');
+        printud(read);
         printc('\n');
         delay();
     }
