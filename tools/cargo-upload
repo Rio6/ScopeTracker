@@ -34,7 +34,7 @@ fi
 
 if [ "$uploadport" == "null" ]; then
     echo "No upload port"
-    return 1
+    exit 1
 fi
 
 echo "Uploading to $uploadport"

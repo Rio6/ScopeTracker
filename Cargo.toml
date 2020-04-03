@@ -2,10 +2,15 @@
 name = "scope_tracker"
 version = "0.1.0"
 
-[profile.release]
-panic = "abort"
+[profile.dev]
+opt-level = 3
+debug = true
+debug-assertions = false
+overflow-checks = false
+incremental = false
 lto = true
-opt-level = "z"
+panic = "abort"
 
-[dependencies.ruduino]
-git = "https://github.com/avr-rust/ruduino"
+[dependencies]
+avr-libc = "0.1.3"
+ruduino = {git = "https://github.com/avr-rust/ruduino"}

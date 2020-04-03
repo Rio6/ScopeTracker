@@ -1,3 +1,4 @@
+use avr_libc::fmod;
 use ruduino::{
     config::CPU_FREQUENCY_HZ,
     legacy::serial
@@ -22,10 +23,10 @@ pub fn prints(s: &str) {
     }
 }
 
-pub fn printb(mut n: u16, width: i16) {
-    n <<= 16 - width;
+pub fn printb(mut n: u32, width: usize) {
+    n <<= 32 - width;
     for _ in 0..width {
-        if n & 0x8000 > 0 {
+        if n & 0x80000000 > 0 {
             printc('1');
         } else {
             printc('0');
@@ -34,14 +35,33 @@ pub fn printb(mut n: u16, width: i16) {
     }
 }
 
-pub fn printud(mut n: u16) {
-    const W: usize = 5;
-    let mut buff: [u8; W] = [0; W];
-    for i in 0..W {
-        buff[i] = (n % 10) as u8;
-        n /= 10;
+pub fn printf(mut num: f32, before: usize, after: usize) {
+
+    fn print_digit(n: f32) {
+        unsafe {
+            let x = fmod(n as f64, 10.0) as u8;
+            serial::transmit('0' as u8 + x);
+        }
     }
-    for i in (0..W).rev() {
-        printc(('0' as u8 + buff[i]) as char);
+
+    if num < 0.0 {
+        printc('-');
+        num = -num;
+    }
+
+    for _ in 1..before {
+        num /= 10.0;
+    }
+
+    for _ in 0..before {
+        print_digit(num);
+        num *= 10.0;
+    }
+
+    printc('.');
+
+    for _ in 0..after {
+        print_digit(num);
+        num *= 10.0;
     }
 }
